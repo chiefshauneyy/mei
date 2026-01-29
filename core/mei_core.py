@@ -5,7 +5,7 @@ from core.runner import run_all
 from core.state import get_conn, init_db
 
 DAILY_AGENTS = ["daily_briefing"]
-HOURLY_AGENTS = ["price_watcher"]
+HOURLY_AGENTS = ["price_watcher", "rss_digest"]
 
 def main() -> None:
     cfg = load_config()
