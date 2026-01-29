@@ -137,18 +137,18 @@ def main() -> None:
         drop_percent = it.get("drop_percent")
         drop_absolute = it.get("drop_absolute")
 
-        try:
+                try:
             text = fetch_text(url)
             min_price = it.get("min_price")
             new_price, sample = parse_min_price(text, regex, min_price=min_price)
 
-if it.get("debug_prices"):
-    print(f"[price_watcher] debug: matched {len(sample)} prices (sample): {sample}")
-
+            if it.get("debug_prices"):
+                print(f"[price_watcher] debug: matched {len(sample)} prices (sample): {sample}")
 
         except Exception as e:
             print(f"[price_watcher] fetch failed: {name} -> {e}")
             continue
+
 
         if new_price is None:
             print(f"[price_watcher] price not found: {name}")
