@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-import urllib.request
+import subprocess
 from datetime import datetime
 
 from core.config import load_config
@@ -9,28 +9,59 @@ from core.notifier import ntfy_send
 from core.state import get_conn, init_db
 
 
-def fetch_text(url: str) -> str:
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit/537.36 (KHTML, like Gecko) Chrome Safari"
-        },
-        method="GET",
+def fetch_text_curl(url: str) -> str:
+    return subprocess.check_output(
+        [
+            "curl", "-L", "-s", "--compressed",
+            "-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "-H", "Accept-Language: en-US,en;q=0.9",
+            url,
+        ],
+        text=True,
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        data = resp.read()
-    return data.decode("utf-8", errors="ignore")
 
 
-def parse_price(text: str, regex: str) -> float | None:
-    m = re.search(regex, text)
-    if not m:
+def fetch_text_playwright(url: str) -> str:
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        page.goto(url, wait_until="networkidle", timeout=60000)
+        html = page.content()
+        browser.close()
+        return html
+
+
+def looks_like_js_shell(html: str) -> bool:
+    # MPB returns a small JS shell via curl; rendered page is much larger.
+    return len(html) < 50000
+
+
+def fetch_text(url: str) -> str:
+    html = fetch_text_curl(url)
+    if looks_like_js_shell(html):
+        html = fetch_text_playwright(url)
+    return html
+
+
+def parse_min_price(text: str, regex: str) -> float | None:
+    matches = re.findall(regex, text)
+    if not matches:
         return None
-    raw = m.group(1).replace(",", "").strip()
-    try:
-        return float(raw)
-    except ValueError:
-        return None
+
+    prices: list[float] = []
+    for m in matches:
+        raw = m.replace(",", "").strip()
+        try:
+            prices.append(float(raw))
+        except ValueError:
+            continue
+
+    return min(prices) if prices else None
 
 
 def should_alert(old: float | None, new: float, drop_percent: float | None, drop_absolute: float | None) -> bool:
@@ -99,14 +130,14 @@ def main() -> None:
 
         try:
             text = fetch_text(url)
-            new_price = parse_price(text, regex)
+            new_price = parse_min_price(text, regex)
         except Exception as e:
             print(f"[price_watcher] fetch failed: {name} -> {e}")
             continue
 
         if new_price is None:
             print(f"[price_watcher] price not found: {name}")
-            old_price = upsert_item(conn, name, url, None, currency)
+            upsert_item(conn, name, url, None, currency)
             continue
 
         old_price = upsert_item(conn, name, url, new_price, currency)
@@ -114,14 +145,16 @@ def main() -> None:
         if should_alert(old_price, new_price, drop_percent, drop_absolute):
             drop_amt = (old_price - new_price) if old_price is not None else 0
             drop_pct = ((drop_amt / old_price) * 100.0) if old_price else 0
-            msg = "\n".join([
-                f"{name}",
-                f"Old: {old_price:.2f} {currency}" if old_price is not None else "Old: (unknown)",
-                f"New: {new_price:.2f} {currency}",
-                f"Drop: {drop_amt:.2f} ({drop_pct:.1f}%)",
-                "",
-                url
-            ])
+            msg = "\n".join(
+                [
+                    f"{name}",
+                    f"Old: {old_price:.2f} {currency}" if old_price is not None else "Old: (unknown)",
+                    f"New: {new_price:.2f} {currency}",
+                    f"Drop: {drop_amt:.2f} ({drop_pct:.1f}%)",
+                    "",
+                    url,
+                ]
+            )
             ntfy_send(
                 base_url=base_url,
                 topic=topic,
@@ -132,7 +165,6 @@ def main() -> None:
             )
             alerted += 1
             print(f"[price_watcher] ALERT: {name}")
-
         else:
             print(f"[price_watcher] ok: {name} @ {new_price:.2f} {currency}")
 
