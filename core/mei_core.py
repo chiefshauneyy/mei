@@ -1,28 +1,18 @@
-import subprocess
-from datetime import datetime
-from pathlib import Path
+from core.config import load_config
+from core.runner import run_all
+from core.state import get_conn, init_db
 
-AGENTS = [
-    "daily_briefing",
-]
+# Phase 1: simple fixed list; later read from config.
+AGENTS = ["daily_briefing"]
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+def main() -> None:
+    cfg = load_config()
+    conn = get_conn(cfg["paths"]["db"])
+    init_db(conn)
+    conn.close()
 
-def run_agent(name: str) -> int:
-    agent = BASE_DIR / "agents" / name / "run.py"
-    if not agent.exists():
-        print(f"[MEI] Missing agent: {name}")
-        return 1
-    return subprocess.run(["python3", str(agent)]).returncode
-
-def main():
-    print(f"[MEI] Tick @ {datetime.now().isoformat(timespec='seconds')}")
-    failures = 0
-    for agent in AGENTS:
-        if run_agent(agent) != 0:
-            failures += 1
-    if failures:
-        raise SystemExit(1)
+    rc = run_all(AGENTS)
+    raise SystemExit(rc)
 
 if __name__ == "__main__":
     main()

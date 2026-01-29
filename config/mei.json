@@ -1,0 +1,16 @@
+{
+  "ntfy": {
+    "base_url": "https://ntfy.sh",
+    "topics": {
+      "daily": "mei-daily",
+      "alerts": "mei-alerts",
+      "digest": "mei-digest",
+      "work": "mei-work",
+      "weekly": "mei-weekly"
+    }
+  },
+  "paths": {
+    "db": "data/mei.sqlite3",
+    "log_dir": "logs"
+  }
+}
