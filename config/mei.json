@@ -9,6 +9,21 @@
       "weekly": "mei-weekly"
     }
   },
+  "rss_digest": {
+  "enabled": true,
+  "max_items": 4,
+  "max_per_feed": 1,
+  "feeds": [
+    { "name": "Reuters Tech", "url": "https://feeds.reuters.com/reuters/technologyNews" },
+    { "name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/" },
+    { "name": "CISA Advisories", "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml" },
+    { "name": "Defense One", "url": "https://www.defenseone.com/rss/all/" },
+    { "name": "Reuters World", "url": "https://feeds.reuters.com/Reuters/worldNews" },
+    { "name": "FT Markets", "url": "https://www.ft.com/markets?format=rss" },
+    { "name": "MPB Camera Market", "url": "https://www.mpb.com/en-us/content/rss" },
+    { "name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index" }
+  ]
+},
   "paths": {
     "db": "data/mei.sqlite3",
     "log_dir": "logs"
