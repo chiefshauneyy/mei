@@ -12,10 +12,16 @@ from core.state import get_conn, init_db
 def fetch_text_curl(url: str) -> str:
     return subprocess.check_output(
         [
-            "curl", "-L", "-s", "--compressed",
-            "-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "-H", "Accept-Language: en-US,en;q=0.9",
+            "curl",
+            "-L",
+            "-s",
+            "--compressed",
+            "-H",
+            "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "-H",
+            "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "-H",
+            "Accept-Language: en-US,en;q=0.9",
             url,
         ],
         text=True,
@@ -37,7 +43,7 @@ def fetch_text_playwright(url: str) -> str:
 
 
 def looks_like_js_shell(html: str) -> bool:
-    # MPB returns a small JS shell via curl; rendered page is much larger.
+    # MPB often returns a small JS shell via curl; rendered page is much larger.
     return len(html) < 50000
 
 
@@ -48,7 +54,11 @@ def fetch_text(url: str) -> str:
     return html
 
 
-def parse_min_price(text: str, regex: str, min_price: float | None = None) -> tuple[float | None, list[float]]:
+def parse_min_price(
+    text: str,
+    regex: str,
+    min_price: float | None = None,
+) -> tuple[float | None, list[float]]:
     matches = re.findall(regex, text)
     if not matches:
         return None, []
@@ -60,8 +70,10 @@ def parse_min_price(text: str, regex: str, min_price: float | None = None) -> tu
             val = float(raw)
         except ValueError:
             continue
+
         if min_price is not None and val < min_price:
             continue
+
         prices.append(val)
 
     if not prices:
@@ -71,9 +83,12 @@ def parse_min_price(text: str, regex: str, min_price: float | None = None) -> tu
     return prices_sorted[0], prices_sorted[:20]
 
 
-
-
-def should_alert(old: float | None, new: float, drop_percent: float | None, drop_absolute: float | None) -> bool:
+def should_alert(
+    old: float | None,
+    new: float,
+    drop_percent: float | None,
+    drop_absolute: float | None,
+) -> bool:
     if old is None:
         return False
     if drop_absolute is not None and (old - new) >= drop_absolute:
@@ -136,19 +151,18 @@ def main() -> None:
         regex = it.get("regex", default_regex)
         drop_percent = it.get("drop_percent")
         drop_absolute = it.get("drop_absolute")
+        min_price = it.get("min_price")
 
-                try:
+        try:
             text = fetch_text(url)
-            min_price = it.get("min_price")
             new_price, sample = parse_min_price(text, regex, min_price=min_price)
 
             if it.get("debug_prices"):
-                print(f"[price_watcher] debug: matched {len(sample)} prices (sample): {sample}")
+                print(f"[price_watcher] debug: sample prices: {sample}")
 
         except Exception as e:
             print(f"[price_watcher] fetch failed: {name} -> {e}")
             continue
-
 
         if new_price is None:
             print(f"[price_watcher] price not found: {name}")
