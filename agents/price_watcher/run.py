@@ -48,7 +48,7 @@ def fetch_text(url: str) -> str:
     return html
 
 
-def parse_min_price(text: str, regex: str) -> float | None:
+def parse_min_price(text: str, regex: str, min_price: float | None = None) -> float | None:
     matches = re.findall(regex, text)
     if not matches:
         return None
@@ -57,11 +57,17 @@ def parse_min_price(text: str, regex: str) -> float | None:
     for m in matches:
         raw = m.replace(",", "").strip()
         try:
-            prices.append(float(raw))
+            val = float(raw)
         except ValueError:
             continue
 
+        if min_price is not None and val < min_price:
+            continue
+
+        prices.append(val)
+
     return min(prices) if prices else None
+
 
 
 def should_alert(old: float | None, new: float, drop_percent: float | None, drop_absolute: float | None) -> bool:
@@ -130,7 +136,9 @@ def main() -> None:
 
         try:
             text = fetch_text(url)
-            new_price = parse_min_price(text, regex)
+            min_price = it.get("min_price")
+            new_price = parse_min_price(text, regex, min_price=min_price)
+
         except Exception as e:
             print(f"[price_watcher] fetch failed: {name} -> {e}")
             continue
