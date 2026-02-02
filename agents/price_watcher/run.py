@@ -11,7 +11,6 @@ def fetch_stealth(url: str) -> str:
     
     try:
         with sync_playwright() as p:
-            # TEMP CHANGE: Set headless=False so you can see the window
             browser = p.chromium.launch_persistent_context(
                 user_data_dir,
                 executable_path=chrome_path, 
@@ -22,15 +21,18 @@ def fetch_stealth(url: str) -> str:
             page = browser.pages[0]
             stealth(page)
 
-            print(f"[price_watcher] Navigating to {url}...")
+            print(f"\n[MEI] Navigating to: {url}")
             page.goto(url, wait_until="networkidle", timeout=90000)
             
-            # If you see a "Verify you are human" box on your screen, CLICK IT manually.
-            # We will wait 20 seconds here to give you time to act.
-            print("[price_watcher] Waiting for manual interaction/page load...")
-            time.sleep(20) 
+            # --- THE HOLD ---
+            print("\n🚨 ACTION REQUIRED 🚨")
+            print("1. Look at the Chrome window that just opened.")
+            print("2. Solve any Captcha or 'Verify you are human' boxes.")
+            print("3. Once the actual MPB site is visible, come back here.")
+            input("👉 Press ENTER in this terminal to continue and save the session...")
+            # ----------------
             
-            # Wait for the price to appear
+            # Wait for price to render
             page.wait_for_selector("span[data-testid='price']", timeout=15000)
             
             content = page.content()
@@ -38,7 +40,7 @@ def fetch_stealth(url: str) -> str:
             return content
     except Exception as e:
         return f"ERROR: {str(e)}"
-
+        
 # ... main function remains the same ...
 
 def main() -> str:
