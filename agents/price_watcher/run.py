@@ -6,87 +6,69 @@ from core.config import load_config
 from core.state import get_conn, init_db
 
 def fetch_stealth(url: str) -> str:
-    # Create a temporary user data dir to store 'cookies' and look real
+    # Path to your actual Chrome on macOS
+    chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     user_data_dir = os.path.join(os.getcwd(), "data", "browser_profile")
     
     try:
         with sync_playwright() as p:
-            # We launch with headless=False just to test. 
-            # If this works on your Mac, we've found the 'tell'.
+            # We use the 'executable_path' to launch YOUR Chrome
             browser = p.chromium.launch_persistent_context(
                 user_data_dir,
-                headless=True, # Try True first with the persistent context
-                args=[
-                    '--disable-blink-features=AutomationControlled',
-                    '--start-maximized'
-                ],
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                executable_path=chrome_path, 
+                headless=True,
+                args=['--disable-blink-features=AutomationControlled']
             )
             
-            page = browser.pages[0] if browser.pages else browser.new_page()
+            page = browser.pages[0]
             stealth(page)
 
-            # Visit Google first
+            # Visit Google first to establish a session
             page.goto("https://www.google.com", wait_until="networkidle")
             time.sleep(random.uniform(2, 4))
             
             # Go to MPB
-            response = page.goto(url, wait_until="networkidle", timeout=90000)
+            page.goto(url, wait_until="networkidle", timeout=90000)
             
-            # If we hit a Cloudflare 'Waiting' room, wait longer
-            if "Just a moment" in page.content():
-                print("[price_watcher] Cloudflare detected, waiting 10s...")
-                time.sleep(10)
-            
-            # Scroll like a human
-            page.mouse.wheel(0, random.randint(300, 700))
-            time.sleep(3)
+            # Critical: Wait for the price element specifically (MPB uses 'price' class)
+            page.wait_for_selector("span[data-testid='price']", timeout=15000)
             
             content = page.content()
             browser.close()
             return content
     except Exception as e:
+        # If it fails, return the error to see what happened
         return f"ERROR: {str(e)}"
-
-# ... rest of main() stays the same as previous version ...
 
 def main() -> str:
     cfg = load_config()
-    pw_cfg = cfg.get("price_watch", {})
-    if not pw_cfg.get("enabled", True): return ""
-    
-    items = pw_cfg.get("items", [])
+    items = cfg.get("price_watch", {}).get("items", [])
     conn = get_conn(cfg["paths"]["db"])
     init_db(conn)
     
     reports = []
     for it in items:
-        name = it.get("name", "Item")
         html = fetch_stealth(it["url"])
         
-        if "ERROR" in html or "Forbidden" in html or "🛡️" in html:
-            reports.append(f"**{name}**: 🛡️ Security block or timeout.")
+        # Check if we got the actual page content
+        if "ERROR" in html or "Access Denied" in html:
+            reports.append(f"**{it['name']}**: 🛡️ Security block or timeout.")
             continue
 
-        # More flexible regex to handle different currency formats and comma separators
-        match = re.search(r"[\$\£\€]\s?([0-9,]+(?:\.[0-9]{2})?)", html)
+        # Regex tuned for MPB's specific price format
+        match = re.search(r"\$([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?)", html)
         if match:
-            raw_price = match.group(1).replace(",", "")
-            new_price = float(raw_price)
-            reports.append(f"**{name}**: **${new_price:,.2f}**")
-            
+            new_price = float(match.group(1).replace(",", ""))
+            reports.append(f"**{it['name']}**: **${new_price:,.2f}**")
             conn.execute("INSERT INTO price_watch (name, url, last_price, updated_at) VALUES (?,?,?,?) "
                          "ON CONFLICT(url) DO UPDATE SET last_price=excluded.last_price", 
-                         (name, it["url"], new_price, datetime.now().isoformat()))
+                         (it['name'], it['url'], new_price, datetime.now().isoformat()))
         else:
-            reports.append(f"**{name}**: 🔍 Price not found.")
+            reports.append(f"**{it['name']}**: 🔍 Price not found.")
 
     conn.commit()
     conn.close()
-    
-    if not reports: return ""
-    return "### 💰 Price Watcher\n" + "\n".join(reports)
+    return "### 💰 Price Watcher\n" + "\n".join(reports) if reports else ""
 
 if __name__ == "__main__":
-    # We strip the output to ensure no extra whitespace messes with the runner
     print(main().strip())
