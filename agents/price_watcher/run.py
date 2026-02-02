@@ -1,6 +1,4 @@
-import re
-import time
-import random
+import re, time, random
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 from playwright_stealth import stealth 
@@ -8,30 +6,29 @@ from core.config import load_config
 from core.state import get_conn, init_db
 
 def fetch_stealth(url: str) -> str:
-    # Use a single context manager for the entire browser session
     try:
         with sync_playwright() as p:
-            # handle_sigint=False is required for running in subprocesses on macOS
-            browser = p.chromium.launch(
-                headless=True, 
-                slow_mo=random.randint(50, 200),
-                args=['--disable-blink-features=AutomationControlled']
-            )
-            
+            # We add a common window size and disable the automation flag
+            browser = p.chromium.launch(headless=True)
             context = browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                viewport={'width': 1280, 'height': 720}
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                java_script_enabled=True
             )
             page = context.new_page()
             stealth(page)
+
+            # Warm up by visiting Google first (looks like an organic referral)
+            page.goto("https://www.google.com")
+            time.sleep(random.uniform(1, 2))
             
-            # Realistic human-like navigation
-            time.sleep(random.uniform(1, 3))
-            page.goto(url, wait_until="domcontentloaded", timeout=60000)
-            page.wait_for_load_state("networkidle")
+            # Now go to the target
+            page.goto(url, wait_until="networkidle", timeout=60000)
             
-            # Trigger lazy loaders
-            page.mouse.wheel(0, 500)
+            # Wait for price elements (specific to MPB's slow JS)
+            page.wait_for_timeout(5000)
+            
+            # Simple scroll
+            page.mouse.wheel(0, 400)
             time.sleep(2)
             
             content = page.content()
@@ -39,6 +36,8 @@ def fetch_stealth(url: str) -> str:
             return content
     except Exception as e:
         return f"ERROR: {str(e)}"
+
+# ... rest of main() stays the same as previous version ...
 
 def main() -> str:
     cfg = load_config()
