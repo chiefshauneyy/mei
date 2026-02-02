@@ -1,4 +1,4 @@
-import re, time, random
+import re, time, random, os
 from datetime import datetime
 from playwright.sync_api import sync_playwright
 from playwright_stealth import stealth 
@@ -6,30 +6,41 @@ from core.config import load_config
 from core.state import get_conn, init_db
 
 def fetch_stealth(url: str) -> str:
+    # Create a temporary user data dir to store 'cookies' and look real
+    user_data_dir = os.path.join(os.getcwd(), "data", "browser_profile")
+    
     try:
         with sync_playwright() as p:
-            # We add a common window size and disable the automation flag
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                java_script_enabled=True
+            # We launch with headless=False just to test. 
+            # If this works on your Mac, we've found the 'tell'.
+            browser = p.chromium.launch_persistent_context(
+                user_data_dir,
+                headless=True, # Try True first with the persistent context
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--start-maximized'
+                ],
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
             )
-            page = context.new_page()
+            
+            page = browser.pages[0] if browser.pages else browser.new_page()
             stealth(page)
 
-            # Warm up by visiting Google first (looks like an organic referral)
-            page.goto("https://www.google.com")
-            time.sleep(random.uniform(1, 2))
+            # Visit Google first
+            page.goto("https://www.google.com", wait_until="networkidle")
+            time.sleep(random.uniform(2, 4))
             
-            # Now go to the target
-            page.goto(url, wait_until="networkidle", timeout=60000)
+            # Go to MPB
+            response = page.goto(url, wait_until="networkidle", timeout=90000)
             
-            # Wait for price elements (specific to MPB's slow JS)
-            page.wait_for_timeout(5000)
+            # If we hit a Cloudflare 'Waiting' room, wait longer
+            if "Just a moment" in page.content():
+                print("[price_watcher] Cloudflare detected, waiting 10s...")
+                time.sleep(10)
             
-            # Simple scroll
-            page.mouse.wheel(0, 400)
-            time.sleep(2)
+            # Scroll like a human
+            page.mouse.wheel(0, random.randint(300, 700))
+            time.sleep(3)
             
             content = page.content()
             browser.close()
