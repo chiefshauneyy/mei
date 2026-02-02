@@ -1,83 +1,76 @@
-from __future__ import annotations
 import re
-import subprocess
+import time
+import random
 from datetime import datetime
+from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
 from core.config import load_config
 from core.state import get_conn, init_db
 
-def fetch_text(url: str) -> str:
-    # Try curl first
-    try:
-        html = subprocess.check_output([
-            "curl", "-L", "-s", "--compressed",
-            "-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            url
-        ], text=True, timeout=15)
+def fetch_stealth(url: str) -> str:
+    with sync_playwright() as p:
+        # Launching with a specific 'slow_mo' to beat timing-based bot checks
+        browser = p.chromium.launch(headless=True, slow_mo=random.randint(50, 200))
         
-        # Fallback to Playwright if page is too small (likely JS shell)
-        if len(html) < 50000:
-            from playwright.sync_api import sync_playwright
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                page = browser.new_page()
-                page.goto(url, wait_until="networkidle", timeout=60000)
-                html = page.content()
-                browser.close()
-        return html
-    except Exception as e:
-        return f"ERROR: {e}"
+        # Emulating a real MacBook screen
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={'width': 1280, 'height': 720}
+        )
+        page = context.new_page()
+        stealth_sync(page)
+        
+        try:
+            # Human-like delay before navigating
+            time.sleep(random.uniform(1, 3))
+            page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            
+            # Wait for the price elements to actually render
+            page.wait_for_load_state("networkidle")
+            
+            # Scroll down slightly to trigger lazy-loading (very human behavior)
+            page.mouse.wheel(0, 500)
+            time.sleep(2)
+            
+            return page.content()
+        except Exception as e:
+            return f"ERROR: {e}"
+        finally:
+            browser.close()
 
 def main() -> str:
     cfg = load_config()
-    pw = cfg.get("price_watch", {})
-    if not pw.get("enabled", True): return ""
-
+    pw_cfg = cfg.get("price_watch", {})
+    if not pw_cfg.get("enabled", True): return ""
+    
+    items = pw_cfg.get("items", [])
     conn = get_conn(cfg["paths"]["db"])
     init_db(conn)
     
     reports = []
-    items = pw.get("items", [])
-    
     for it in items:
         name = it.get("name", "Item")
-        url = it["url"]
-        regex = it.get("regex", r"\$\s*([0-9,]+(?:\.[0-9]{2})?)")
+        html = fetch_stealth(it["url"])
         
-        html = fetch_text(url)
-        if "ERROR" in html:
-            reports.append(f"**{name}**: Fetch failed.")
+        if "ERROR" in html or "Forbidden" in html:
+            reports.append(f"**{name}**: 🛡️ Blocked by site security.")
             continue
 
-        matches = re.findall(regex, html)
-        if not matches:
-            reports.append(f"**{name}**: Price not found.")
-            continue
-
-        # Clean and find min price
-        prices = sorted([float(m.replace(",", "")) for m in matches if m])
-        new_price = prices[0]
-        
-        # Database check for old price
-        row = conn.execute("SELECT last_price FROM price_watch WHERE url=?", (url,)).fetchone()
-        old_price = row[0] if row else None
-        
-        # Logic to determine if we show it in the report
-        if old_price and new_price < old_price:
-            diff = old_price - new_price
-            reports.append(f"**{name}**: 📉 **${new_price:.2f}** (Dropped ${diff:.2f}!) [Link]({url})")
+        # Using a broader regex to catch prices regardless of exact HTML structure
+        match = re.search(r"[\$\£\€]\s?([0-9,]+\.[0-9]{2})", html)
+        if match:
+            new_price = float(match.group(1).replace(",", ""))
+            reports.append(f"**{name}**: **${new_price:,.2f}**")
+            # DB update logic
+            conn.execute("INSERT INTO price_watch (name, url, last_price, updated_at) VALUES (?,?,?,?) "
+                         "ON CONFLICT(url) DO UPDATE SET last_price=excluded.last_price", 
+                         (name, it["url"], new_price, datetime.now().isoformat()))
         else:
-            reports.append(f"**{name}**: ${new_price:.2f} (No change)")
-
-        # Update DB
-        conn.execute("INSERT INTO price_watch (name, url, last_price, updated_at) VALUES (?,?,?,?) "
-                     "ON CONFLICT(url) DO UPDATE SET last_price=excluded.last_price", 
-                     (name, url, new_price, datetime.now().isoformat()))
+            reports.append(f"**{name}**: 🔍 Could not locate price.")
 
     conn.commit()
     conn.close()
-    
-    if not reports: return ""
-    return "### 💰 Price Watcher\n" + "\n".join(reports)
+    return "### 💰 Price Watcher\n" + "\n".join(reports) if reports else ""
 
 if __name__ == "__main__":
     print(main())
