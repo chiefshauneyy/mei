@@ -6,39 +6,40 @@ from core.config import load_config
 from core.state import get_conn, init_db
 
 def fetch_stealth(url: str) -> str:
-    # Path to your actual Chrome on macOS
     chrome_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
     user_data_dir = os.path.join(os.getcwd(), "data", "browser_profile")
     
     try:
         with sync_playwright() as p:
-            # We use the 'executable_path' to launch YOUR Chrome
+            # TEMP CHANGE: Set headless=False so you can see the window
             browser = p.chromium.launch_persistent_context(
                 user_data_dir,
                 executable_path=chrome_path, 
-                headless=True,
+                headless=False, 
                 args=['--disable-blink-features=AutomationControlled']
             )
             
             page = browser.pages[0]
             stealth(page)
 
-            # Visit Google first to establish a session
-            page.goto("https://www.google.com", wait_until="networkidle")
-            time.sleep(random.uniform(2, 4))
-            
-            # Go to MPB
+            print(f"[price_watcher] Navigating to {url}...")
             page.goto(url, wait_until="networkidle", timeout=90000)
             
-            # Critical: Wait for the price element specifically (MPB uses 'price' class)
+            # If you see a "Verify you are human" box on your screen, CLICK IT manually.
+            # We will wait 20 seconds here to give you time to act.
+            print("[price_watcher] Waiting for manual interaction/page load...")
+            time.sleep(20) 
+            
+            # Wait for the price to appear
             page.wait_for_selector("span[data-testid='price']", timeout=15000)
             
             content = page.content()
             browser.close()
             return content
     except Exception as e:
-        # If it fails, return the error to see what happened
         return f"ERROR: {str(e)}"
+
+# ... main function remains the same ...
 
 def main() -> str:
     cfg = load_config()
