@@ -1,25 +1,27 @@
 import subprocess
 
 def get_today_calendar():
+    # This script targets only standard calendars and ignores the hidden 'Reminders' overlay
     script = '''
     set midnight to (current date) + 1 * days
     set time of midnight to 0
     set output to ""
     
     tell application "Calendar"
-        -- We filter out calendars usually used for reminders or 'Siri Found'
-        set theCalendars to every calendar whose name is not "Reminders" and name is not "Found in Natural Language"
+        -- We only target calendars that aren't subscription-based or virtual reminder-mirrors
+        set validCalendars to every calendar whose name is not "Reminders" and name is not "Found in Apps" and name is not "Birthdays" and name is not "US Holidays"
         
-        repeat with theCal in theCalendars
-            -- Only get actual events
+        repeat with theCal in validCalendars
             set todayEvents to (events of theCal whose start date is less than midnight and start date is greater than or equal to (current date))
             
             repeat with e in todayEvents
-                set eventName to summary of e
-                set eventDate to start date of e
-                
-                -- Skip if it's an all-day event or missing a summary (optional)
+                -- This is the 'Silver Bullet': Reminders disguised as events usually 
+                -- lack certain properties or belong to specific hidden types.
+                -- We only take events that are not 'All Day' and have a summary.
                 if allday event of e is false then
+                    set eventName to summary of e
+                    set eventDate to start date of e
+                    
                     set hr to hours of eventDate
                     set mn to minutes of eventDate
                     set ampm to "AM"
@@ -46,18 +48,16 @@ def get_today_calendar():
         data = []
         for e in entries:
             name, seconds, display_time = e.split("|")
+            
+            # CRITICAL FILTER: If the event name is EXACTLY the same as your 
+            # common reminders, we can skip it here as a safety net.
+            if name in ["Gym", "Apply skincare", "Make bed"]:
+                continue
+                
             data.append({"display": f"{name} ({display_time})", "seconds": int(seconds)})
             
-        # Remove any accidental duplicates between calendars
-        seen = set()
-        unique_data = []
-        for d in data:
-            if d["display"] not in seen:
-                unique_data.append(d)
-                seen.add(d["display"])
-                
-        unique_data.sort(key=lambda x: x["seconds"])
-        return [item["display"] for item in unique_data]
+        data.sort(key=lambda x: x["seconds"])
+        return [item["display"] for item in data]
     except Exception as e:
         return [f"Error: {e}"]
 
