@@ -1,25 +1,32 @@
 import subprocess
 
 def get_today_calendar():
-    # Targets specific calendars identified by your terminal scan
     script = '''
-    set midnight to (current date) + 1 * days
-    set time of midnight to 0
+    -- Set "startOfToday" to 00:00:00 of the current day
+    set startOfToday to (current date)
+    set time of startOfToday to 0
+    
+    -- Set "endOfToday" to 23:59:59 of the current day
+    set endOfToday to startOfToday + (24 * hours) - 1
+    
     set output to ""
     
     tell application "Calendar"
-        -- We focus only on your real data calendars
-        set targetCalendars to {"Home", "Work"}
+        set allCals to every calendar whose name is not "Scheduled Reminders" and name is not "Siri Suggestions" and name is not "Birthdays" and name is not "US Holidays"
         
-        repeat with calName in targetCalendars
-            try
-                set theCal to calendar calName
-                set todayEvents to (events of theCal whose start date is less than midnight and start date is greater than or equal to (current date))
+        repeat with theCal in allCals
+            -- Get events that fall within the 24-hour window of today
+            set todayEvents to (events of theCal whose start date is less than or equal to endOfToday and start date is greater than or equal to startOfToday)
+            
+            repeat with e in todayEvents
+                set eventName to summary of e
+                set eventDate to start date of e
+                set isAllDay to allday event of e
                 
-                repeat with e in todayEvents
-                    set eventName to summary of e
-                    set eventDate to start date of e
-                    
+                if isAllDay then
+                    set displayTime to " (All Day)"
+                    set sortTime to -1 -- All-day at the very top
+                else
                     set hr to hours of eventDate
                     set mn to minutes of eventDate
                     set ampm to "AM"
@@ -28,11 +35,12 @@ def get_today_calendar():
                     if hr = 0 then set hr to 12
                     set mnStr to mn as string
                     if (length of mnStr) < 2 then set mnStr to "0" & mnStr
-                    
-                    set displayTime to hr & ":" & mnStr & " " & ampm
-                    set output to output & eventName & "|" & (time of eventDate) & "|" & displayTime & ";"
-                end repeat
-            end try
+                    set displayTime to " (" & hr & ":" & mnStr & " " & ampm & ")"
+                    set sortTime to time of eventDate
+                end if
+                
+                set output to output & eventName & "|" & sortTime & "|" & displayTime & ";"
+            end repeat
         end repeat
     end tell
     return output
@@ -40,24 +48,23 @@ def get_today_calendar():
     try:
         process = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
         raw_output = process.stdout.strip()
-        
-        if not raw_output or raw_output == "":
-            return []
+        if not raw_output: return []
         
         entries = [e for e in raw_output.split(";") if "|" in e]
         data = []
         for e in entries:
             name, seconds, display_time = e.split("|")
-            data.append({"display": f"{name} ({display_time})", "seconds": int(seconds)})
+            data.append({"display": f"{name}{display_time}", "seconds": int(seconds)})
             
-        data.sort(key=lambda x: x["seconds"])
-        return [item["display"] for item in data]
+        # Deduplicate and Sort
+        unique_results = {d['display']: d for d in data}.values()
+        final_list = sorted(unique_results, key=lambda x: x["seconds"])
+        return [item["display"] for item in final_list]
     except Exception:
         return []
 
 def main():
     events = get_today_calendar()
-    # Ensure it returns an empty string to core/runner.py if no events found
     if not events:
         return "" 
     
