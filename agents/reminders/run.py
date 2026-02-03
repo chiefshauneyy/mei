@@ -1,13 +1,17 @@
 import subprocess
-import json
 
-def get_reminders():
-    # AppleScript to pull incomplete reminders due today or without a date
+def get_today_reminders():
+    # AppleScript to pull uncompleted reminders due before the end of today
     script = '''
+    set midnight to (current date) + 1 * days
+    set time of midnight to 0
+    
     tell application "Reminders"
         set todoList to {}
-        set activeReminders to (reminders whose completed is false)
-        repeat with re in activeReminders
+        -- Get reminders that are incomplete AND due before tomorrow's midnight
+        set todayReminders to (reminders whose completed is false and due date is not missing value and due date is less than midnight)
+        
+        repeat with re in todayReminders
             set end of todoList to (name of re)
         end repeat
         return todoList
@@ -15,19 +19,23 @@ def get_reminders():
     '''
     try:
         process = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
-        # Convert the AppleScript list string into a clean Python list
-        reminders = process.stdout.strip().split(", ")
-        return [r for r in reminders if r] # Remove empties
+        # Clean up the output string into a list
+        raw_output = process.stdout.strip()
+        if not raw_output:
+            return []
+        reminders = raw_output.split(", ")
+        return [r for r in reminders if r]
     except Exception as e:
-        return [f"Error: {e}"]
+        return [f"Error fetching reminders: {e}"]
 
 def main():
-    tasks = get_reminders()
+    tasks = get_today_reminders()
     if not tasks:
-        return "### ✅ Tasks\nNo pending reminders for today! Nice."
+        # Returning an empty string prevents the header from showing if there's no data
+        return ""
     
     formatted = "\n".join([f"* {t}" for t in tasks])
-    return f"### 📝 Reminders\n{formatted}"
+    return f"### 📝 Today's Reminders\n{formatted}"
 
 if __name__ == "__main__":
     print(main())
