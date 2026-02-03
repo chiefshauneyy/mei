@@ -1,41 +1,50 @@
 import subprocess
 
 def get_today_reminders():
-    # AppleScript to pull uncompleted reminders due before the end of today
+    # This script pulls reminders that are:
+    # 1. Incomplete AND due before midnight tonight
+    # 2. Incomplete AND have no due date at all (covers 'Today' general tasks)
     script = '''
     set midnight to (current date) + 1 * days
     set time of midnight to 0
     
     tell application "Reminders"
-        set todoList to {}
-        -- Get reminders that are incomplete AND due before tomorrow's midnight
-        set todayReminders to (reminders whose completed is false and due date is not missing value and due date is less than midnight)
+        set finalNames to {}
         
-        repeat with re in todayReminders
-            set end of todoList to (name of re)
+        -- Get reminders due specifically today
+        set dueToday to (reminders whose completed is false and due date is not missing value and due date is less than midnight)
+        repeat with r in dueToday
+            copy name of r to end of finalNames
         end repeat
-        return todoList
+        
+        -- Get reminders with NO due date (often how 'Today' tasks appear in the DB)
+        set noDate to (reminders whose completed is false and due date is missing value)
+        repeat with r in noDate
+            copy name of r to end of finalNames
+        end repeat
+        
+        return finalNames
     end tell
     '''
     try:
         process = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
-        # Clean up the output string into a list
         raw_output = process.stdout.strip()
         if not raw_output:
             return []
+        
+        # AppleScript returns items separated by commas and spaces
         reminders = raw_output.split(", ")
-        return [r for r in reminders if r]
+        return list(set([r.strip() for r in reminders if r])) # use set to avoid duplicates
     except Exception as e:
-        return [f"Error fetching reminders: {e}"]
+        return [f"Error: {e}"]
 
 def main():
     tasks = get_today_reminders()
     if not tasks:
-        # Returning an empty string prevents the header from showing if there's no data
-        return ""
+        return "### 📝 Reminders\nNo tasks found for today."
     
     formatted = "\n".join([f"* {t}" for t in tasks])
-    return f"### 📝 Today's Reminders\n{formatted}"
+    return f"### 📝 Today's Tasks ({len(tasks)})\n{formatted}"
 
 if __name__ == "__main__":
     print(main())
