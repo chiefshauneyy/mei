@@ -1,26 +1,28 @@
 import subprocess
 
 def get_today_reminders():
-    # We tell AppleScript to fetch the names from the 'Today' list
-    # and we use the 'reminders' order which typically follows the app's sort.
+    # We use a custom delimiter (;) to avoid issues with commas in task names
     script = '''
+    set midnight to (current date) + 1 * days
+    set time of midnight to 0
+    set todayTasks to ""
+    
     tell application "Reminders"
-        set taskNames to {}
-        try
-            -- Directly accessing the 'Today' smart list
-            set todayList to list "Today"
+        -- Get all incomplete reminders
+        set allR to (reminders whose completed is false)
+        repeat with r in allR
+            set isToday to false
+            try
+                -- Check if it's due today or overdue
+                if (due date of r < midnight) then set isToday to true
+            end try
             
-            -- Get incomplete reminders from Today list
-            set activeReminders to (reminders of todayList whose completed is false)
-            
-            repeat with r in activeReminders
-                copy name of r to end of taskNames
-            end repeat
-        on error
-            return ""
-        end try
-        return taskNames
+            if isToday then
+                set todayTasks to todayTasks & (name of r) & ";"
+            end if
+        end repeat
     end tell
+    return todayTasks
     '''
     try:
         process = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
@@ -29,9 +31,8 @@ def get_today_reminders():
         if not raw_output:
             return []
         
-        # AppleScript returns a comma-separated string: "Task 1, Task 2"
-        # We split by ", " but keep all items (no sets/dicts to avoid deleting duplicates)
-        tasks = [t.strip() for t in raw_output.split(", ") if t]
+        # Split by our custom semicolon and clean up
+        tasks = [t.strip() for t in raw_output.split(";") if t.strip()]
         return tasks
     except Exception as e:
         return [f"Error: {e}"]
@@ -39,8 +40,9 @@ def get_today_reminders():
 def main():
     tasks = get_today_reminders()
     if not tasks:
-        return "### 📝 Reminders\nNo tasks found in your Today list."
+        return "### 📝 Reminders\nNo tasks found due for today."
     
+    # Simple list (keeping duplicates)
     formatted = "\n".join([f"* {t}" for t in tasks])
     return f"### 📝 Today's Tasks ({len(tasks)})\n{formatted}"
 
