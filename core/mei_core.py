@@ -11,9 +11,9 @@ def main():
     cfg = load_config()
     mode = os.getenv("MEI_MODE", "hourly").strip().lower()
     
-    if mode == "daily":
-        # Added "reminders" to the daily workflow
-        agents = ["weather_alert", "reminders", "rss_digest", "price_watcher"]
+    # Inside your main() function:
+if mode == "daily":
+    agents = ["weather_alert", "calendar_events", "reminders", "rss_digest", "price_watcher"]
         topic = cfg["ntfy"]["topics"]["daily"]
     else:
         # For hourly/digest mode, we keep it light
