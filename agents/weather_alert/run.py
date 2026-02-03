@@ -1,29 +1,45 @@
-import json
-import urllib.request
-from core.config import load_config
+import requests
 
-def main() -> str:
-    cfg = load_config()
-    # San Antonio coordinates
-    url = "https://api.weather.gov/alerts/active?point=29.4241,-98.4936"
-    headers = {"User-Agent": f"(MEI Home Server, {cfg.get('admin_email', 'admin@example.com')})"}
-
+def get_weather():
+    # San Antonio Coordinates
+    lat, lon = 29.4241, -98.4936
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
+    
     try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
+        response = requests.get(url)
+        data = response.json()
         
-        features = data.get("features", [])
-        if not features:
-            return "### 🌤 Weather\nNo active alerts for San Antonio."
+        # Current conditions
+        curr_temp = round(data['current']['temperature_2m'])
+        humidity = data['current']['relative_humidity_2m']
+        
+        # Daily High/Low
+        high = round(data['daily']['temperature_2m_max'][0])
+        low = round(data['daily']['temperature_2m_min'][0])
+        
+        # Simple Weather Code Mapping
+        code = data['current']['weather_code']
+        conditions = {
+            0: "Clear Sky ☀️", 1: "Mainly Clear 🌤", 2: "Partly Cloudy ⛅", 3: "Overcast ☁️",
+            45: "Foggy 🌫️", 48: "Rime Fog 🌫️", 51: "Light Drizzle 🌦️", 
+            61: "Rain 🌧️", 71: "Snow ❄️", 80: "Rain Showers 🌦️", 95: "Thunderstorm ⛈️"
+        }
+        status = conditions.get(code, "Clear")
 
-        alerts = ["### ⚠️ Weather Alerts"]
-        for feat in features[:2]:
-            p = feat["properties"]
-            alerts.append(f"**{p['event']}**\n{p['headline']}")
-        return "\n\n".join(alerts)
+        report = [
+            f"Currently: {curr_temp}°C - {status}",
+            f"High: {high}°C | Low: {low}°C",
+            f"Humidity: {humidity}%"
+        ]
+        
+        return "\n".join([f"* {line}" for line in report])
+        
     except Exception as e:
-        return f"### 🌤 Weather\nError fetching alerts: {e}"
+        return f"* Weather data unavailable ({e})"
+
+def main():
+    weather_info = get_weather()
+    return f"### 🌤 Weather (San Antonio)\n{weather_info}"
 
 if __name__ == "__main__":
     print(main())
