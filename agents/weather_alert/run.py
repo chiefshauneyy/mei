@@ -3,7 +3,8 @@ import requests
 def get_weather():
     # San Antonio Coordinates
     lat, lon = 29.4241, -98.4936
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&timezone=auto"
+    # Added &temperature_unit=fahrenheit to the URL
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto"
     
     try:
         response = requests.get(url)
@@ -17,7 +18,7 @@ def get_weather():
         high = round(data['daily']['temperature_2m_max'][0])
         low = round(data['daily']['temperature_2m_min'][0])
         
-        # Simple Weather Code Mapping
+        # Weather Code Mapping
         code = data['current']['weather_code']
         conditions = {
             0: "Clear Sky ☀️", 1: "Mainly Clear 🌤", 2: "Partly Cloudy ⛅", 3: "Overcast ☁️",
@@ -27,8 +28,8 @@ def get_weather():
         status = conditions.get(code, "Clear")
 
         report = [
-            f"Currently: {curr_temp}°C - {status}",
-            f"High: {high}°C | Low: {low}°C",
+            f"Currently: {curr_temp}°F - {status}",
+            f"High: {high}°F | Low: {low}°F",
             f"Humidity: {humidity}%"
         ]
         
