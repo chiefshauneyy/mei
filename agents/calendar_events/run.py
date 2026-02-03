@@ -63,6 +63,7 @@ def get_today_calendar():
 
 def main():
     events = get_today_calendar()
+    # If no events, return empty string so core/runner.py skips it
     if not events:
         return "" 
     
