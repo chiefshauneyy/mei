@@ -11,16 +11,14 @@ def main():
     cfg = load_config()
     mode = os.getenv("MEI_MODE", "hourly").strip().lower()
     
-    # Inside your main() function:
-if mode == "daily":
-    agents = ["weather_alert", "calendar_events", "reminders", "rss_digest", "price_watcher"]
+    if mode == "daily":
+        # Ensure all lines in this block are aligned perfectly
+        agents = ["weather_alert", "calendar_events", "reminders", "rss_digest", "price_watcher"]
         topic = cfg["ntfy"]["topics"]["daily"]
     else:
-        # For hourly/digest mode, we keep it light
         agents = ["price_watcher", "rss_digest"]
         topic = cfg["ntfy"]["topics"]["digest"]
 
-    # This function looks into the 'agents' folder for a folder matching the names above
     report_content = run_all(agents)
     
     ntfy_send(
